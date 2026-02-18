@@ -9,18 +9,18 @@ pub struct Request {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PrePrepare {
-    view: u64,
-    seq_num: u64,
-    digest: [u8; 32],
-    request: Request,
+    pub view: u64,
+    pub seq_num: u64,
+    pub digest: [u8; 32],
+    pub request: Request,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Prepare {
-    view: u64,
-    seq_num: u64,
+    pub view: u64,
+    pub seq_num: u64,
     pub digest: [u8; 32],
-    replica_id: u32,
+    pub replica_id: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

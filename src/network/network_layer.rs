@@ -10,16 +10,17 @@ use crate::{
     network::cert::{NodeCert, make_client_config, make_server_config},
 };
 
-struct Network {
+pub struct Network {
     node_id: u32,
     endpoint: Endpoint,
     peers: Arc<RwLock<HashMap<u32, Connection>>>,
     tx: UnboundedSender<PBFTMessage>,
     rx: UnboundedReceiver<PBFTMessage>,
+    total_nodes: u32,
 }
 
 impl Network {
-    fn new(node_id: u32, bind_addr: SocketAddr, node_cert: &NodeCert) -> Self {
+    fn new(node_id: u32, bind_addr: SocketAddr, node_cert: &NodeCert, total_nodes: u32) -> Self {
         let server_cfg = make_server_config(node_cert);
         let client_cfg = make_client_config();
         let mut endpoint = Endpoint::server(
@@ -42,6 +43,7 @@ impl Network {
             peers: Arc::new(RwLock::new(HashMap::new())),
             tx,
             rx,
+            total_nodes,
         }
     }
 
@@ -105,7 +107,7 @@ impl Network {
         }
     }
 
-    async fn broadcast(&self, message: &PBFTMessage) {
+    pub async fn broadcast(&self, message: &PBFTMessage) {
         let peers = self.peers.read().await;
         for (peer_id, connection) in peers.iter() {
             if let Ok(mut send_stream) = connection.open_uni().await {
@@ -126,5 +128,9 @@ impl Network {
 
     async fn recv(&mut self) -> Option<PBFTMessage> {
         self.rx.recv().await
+    }
+
+    pub fn total_nodes(&self) -> u32 {
+        self.total_nodes
     }
 }

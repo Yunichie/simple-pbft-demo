@@ -23,23 +23,23 @@ impl Crypto {
         }
     }
 
-    fn get_pub_key(&self) -> Vec<u8> {
+    pub fn get_pub_key(&self) -> Vec<u8> {
         self.keypair.public_key().as_ref().to_vec()
     }
 
-    fn generate_keypair() -> Vec<u8> {
+    pub fn generate_keypair() -> Vec<u8> {
         let rng = SystemRandom::new();
         let pkcs8 = Ed25519KeyPair::generate_pkcs8(&rng).unwrap();
         pkcs8.as_ref().to_vec()
     }
 
-    fn sign<T: Serialize>(&self, message: &T) -> Vec<u8> {
+    pub fn sign<T: Serialize>(&self, message: &T) -> Vec<u8> {
         let serialized = postcard::to_allocvec(message).unwrap();
         let signature = self.keypair.sign(&serialized);
         signature.as_ref().to_vec()
     }
 
-    fn create_signed_message<T: Serialize>(&self, message: T) -> SignedMessage<T> {
+    pub fn create_signed_message<T: Serialize>(&self, message: T) -> SignedMessage<T> {
         let signature = self.sign(&message);
         SignedMessage {
             message,
@@ -48,7 +48,7 @@ impl Crypto {
         }
     }
 
-    fn verify_signed_message<T: Serialize>(&self, signed_msg: &SignedMessage<T>) -> bool {
+    pub fn verify_signed_message<T: Serialize>(&self, signed_msg: &SignedMessage<T>) -> bool {
         let pk_bytes = match self.peer_public_keys.get(&signed_msg.signer_id) {
             Some(pk) => pk,
             None => return false,
