@@ -48,7 +48,7 @@ pub struct SignedMessage<T> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-enum PBFTMessage {
+pub enum PBFTMessage {
     Request(SignedMessage<Request>),
     PrePrepare(SignedMessage<PrePrepare>),
     Prepare(SignedMessage<Prepare>),

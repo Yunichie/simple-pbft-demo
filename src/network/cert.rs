@@ -2,7 +2,7 @@ use rcgen::generate_simple_self_signed;
 use rustls::{ClientConfig, ServerConfig};
 use std::sync::Arc;
 
-struct NodeCert {
+pub struct NodeCert {
     cert_der: Vec<u8>,
     key_der: Vec<u8>,
 }
@@ -19,7 +19,7 @@ impl NodeCert {
     }
 }
 
-fn make_server_config(cert: &NodeCert) -> ServerConfig {
+pub fn make_server_config(cert: &NodeCert) -> ServerConfig {
     let cert_chain = vec![rustls::pki_types::CertificateDer::from(
         cert.cert_der.clone(),
     )];
@@ -31,7 +31,7 @@ fn make_server_config(cert: &NodeCert) -> ServerConfig {
         .unwrap()
 }
 
-fn make_client_config() -> ClientConfig {
+pub fn make_client_config() -> ClientConfig {
     let mut config = ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(SkipVerification))
