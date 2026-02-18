@@ -1,14 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Request {
-    operation: Vec<u8>,
-    timestamp: u64,
+pub struct Request {
+    pub operation: Vec<u8>,
+    pub timestamp: u64,
     client_id: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct PrePrepare {
+pub struct PrePrepare {
     view: u64,
     seq_num: u64,
     digest: [u8; 32],
@@ -16,18 +16,18 @@ struct PrePrepare {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Prepare {
+pub struct Prepare {
     view: u64,
     seq_num: u64,
-    digest: [u8; 32],
+    pub digest: [u8; 32],
     replica_id: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Commit {
+pub struct Commit {
     view: u64,
     seq_num: u64,
-    digest: [u8; 32],
+    pub digest: [u8; 32],
     replica_id: u32,
 }
 

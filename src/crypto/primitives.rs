@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::message::message_types::SignedMessage;
 
-struct Crypto {
+pub struct Crypto {
     keypair: Ed25519KeyPair,
     id: u32,
     peer_public_keys: HashMap<u32, Vec<u8>>,
