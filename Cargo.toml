@@ -2,6 +2,19 @@
 name = "simple-pbft-demo"
 version = "0.1.0"
 edition = "2024"
+default-run = "node"
+
+[lib]
+name = "simple_pbft_demo"
+path = "src/lib.rs"
+
+[[bin]]
+name = "node"
+path = "src/main.rs"
+
+[[bin]]
+name = "client"
+path = "src/bin/client.rs"
 
 [dependencies]
 postcard = {version = "1.1.3", features = ["alloc"]}

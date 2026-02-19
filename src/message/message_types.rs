@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 pub struct Request {
     pub operation: Vec<u8>,
     pub timestamp: u64,
-    client_id: u64,
+    pub client_id: u64,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,7 +32,7 @@ pub struct Commit {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct Reply {
+pub struct Reply {
     view: u64,
     timestamp: u64,
     client_id: u64,

@@ -1,19 +1,15 @@
-use rand::seq;
 use sha2::{Digest, Sha256};
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
-use tokio::sync::RwLock;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
+    config::node::NodeConfig,
     crypto::primitives::Crypto,
     message::message_types::{Commit, PBFTMessage, PrePrepare, Prepare, Request, SignedMessage},
-    network::{self, network_layer::Network},
+    network::network_layer::Network,
     state::app_state::AppState,
 };
 
-struct Replica {
+pub struct Replica {
     node_id: u32,
     f: u32,
     view: u64,
@@ -48,7 +44,7 @@ impl MessageLog {
 }
 
 impl Replica {
-    fn new(node_id: u32, total_nodes: u32, crypto: Crypto) -> Self {
+    pub fn new(node_id: u32, total_nodes: u32, crypto: Crypto) -> Self {
         assert!(total_nodes >= 4);
         assert!((total_nodes - 1) % 3 == 0);
 
@@ -71,7 +67,7 @@ impl Replica {
         3 * self.f + 1
     }
 
-    fn is_primary(&self) -> bool {
+    pub fn is_primary(&self) -> bool {
         self.node_id as u64 == self.view % (self.total_nodes() as u64)
     }
 
@@ -404,6 +400,44 @@ impl Replica {
             }
 
             seq += 1;
+        }
+    }
+
+    pub async fn run_replica(mut network: Network, mut replica: Replica, mut config: NodeConfig) {
+        network.spawn_acceptor();
+
+        for peer in config.peers {
+            network.connect_to_peer(peer.id, peer.addr).await;
+        }
+
+        println!(
+            "Replica {} started (primary: {})",
+            replica.node_id,
+            replica.is_primary()
+        );
+
+        loop {
+            if let Some(msg) = network.recv().await {
+                if !replica.crypto.verify_pbft_message(&msg) {
+                    continue;
+                }
+
+                match msg {
+                    PBFTMessage::Request(req) => {
+                        replica.handle_request(req, &network).await;
+                    }
+                    PBFTMessage::PrePrepare(pp) => {
+                        replica.handle_pre_prepare(pp, &network).await;
+                    }
+                    PBFTMessage::Prepare(p) => {
+                        replica.handle_prepare(p, &network).await;
+                    }
+                    PBFTMessage::Commit(c) => {
+                        replica.handle_commit(c, &network).await;
+                    }
+                    PBFTMessage::Reply(_) => {}
+                }
+            }
         }
     }
 }

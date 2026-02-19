@@ -1,5 +1,8 @@
-use rcgen::generate_simple_self_signed;
-use rustls::{ClientConfig, ServerConfig};
+use rcgen::{CertificateParams, KeyPair, PKCS_ECDSA_P256_SHA256};
+use rustls::{
+    ClientConfig, ServerConfig, SignatureScheme,
+    pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
+};
 use std::sync::Arc;
 
 pub struct NodeCert {
@@ -8,27 +11,32 @@ pub struct NodeCert {
 }
 
 impl NodeCert {
-    fn generate(node_id: u32) -> Self {
-        let subject_name = vec![format!("node-{}", node_id)];
-        let cert = generate_simple_self_signed(subject_name).unwrap();
+    pub fn generate(node_id: u32) -> Self {
+        let key_pair = KeyPair::generate().expect("Failed to generate key pair");
+
+        let mut params = CertificateParams::new(vec![format!("node-{}", node_id)])
+            .expect("Failed to create certificate params");
+
+        let cert = params
+            .self_signed(&key_pair)
+            .expect("Failed to create self-signed certificate");
 
         NodeCert {
-            cert_der: cert.cert.der().to_vec(),
-            key_der: cert.signing_key.serialize_der(),
+            cert_der: cert.der().to_vec(),
+            key_der: key_pair.serialize_der(),
         }
     }
 }
 
-pub fn make_server_config(cert: &NodeCert) -> ServerConfig {
-    let cert_chain = vec![rustls::pki_types::CertificateDer::from(
-        cert.cert_der.clone(),
-    )];
-    let key = rustls::pki_types::PrivateKeyDer::try_from(cert.key_der.clone()).unwrap();
+pub fn make_server_config(certs: &NodeCert) -> ServerConfig {
+    let cert_chain = vec![CertificateDer::from(certs.cert_der.clone())];
+
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(certs.key_der.clone()));
 
     ServerConfig::builder()
         .with_no_client_auth()
         .with_single_cert(cert_chain, key)
-        .unwrap()
+        .expect("Invalid server config")
 }
 
 pub fn make_client_config() -> ClientConfig {
@@ -73,6 +81,18 @@ impl rustls::client::danger::ServerCertVerifier for SkipVerification {
     }
 
     fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
-        vec![rustls::SignatureScheme::ED25519]
+        vec![
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::ECDSA_NISTP521_SHA512,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PSS_SHA512,
+            SignatureScheme::ED25519,
+            SignatureScheme::ED448,
+        ]
     }
 }

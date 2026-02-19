@@ -20,19 +20,37 @@ pub struct Network {
 }
 
 impl Network {
-    fn new(node_id: u32, bind_addr: SocketAddr, node_cert: &NodeCert, total_nodes: u32) -> Self {
+    pub fn new(
+        node_id: u32,
+        bind_addr: SocketAddr,
+        node_cert: &NodeCert,
+        total_nodes: u32,
+    ) -> Self {
         let server_cfg = make_server_config(node_cert);
         let client_cfg = make_client_config();
-        let mut endpoint = Endpoint::server(
+
+        println!("Creating QUIC endpoint on {}...", bind_addr);
+
+        let mut endpoint = match Endpoint::server(
             quinn::ServerConfig::with_crypto(Arc::new(
-                quinn::crypto::rustls::QuicServerConfig::try_from(server_cfg).unwrap(),
+                quinn::crypto::rustls::QuicServerConfig::try_from(server_cfg)
+                    .expect("Failed to create QUIC server config"),
             )),
             bind_addr,
-        )
-        .unwrap();
+        ) {
+            Ok(ep) => {
+                println!("QUIC server started successfully on {}", bind_addr);
+                ep
+            }
+            Err(e) => {
+                eprintln!("Failed to start QUIC server: {:?}", e);
+                panic!("Cannot start server");
+            }
+        };
 
         endpoint.set_default_client_config(quinn::ClientConfig::new(Arc::new(
-            quinn::crypto::rustls::QuicClientConfig::try_from(client_cfg).unwrap(),
+            quinn::crypto::rustls::QuicClientConfig::try_from(client_cfg)
+                .expect("Failed to create QUIC client config"),
         )));
 
         let (tx, rx) = mpsc::unbounded_channel();
@@ -47,19 +65,45 @@ impl Network {
         }
     }
 
-    async fn connect_to_peer(&self, peer_id: u32, peer_addr: SocketAddr) {
-        let connection = self
-            .endpoint
-            .connect(peer_addr, "peer")
-            .unwrap()
-            .await
-            .expect("Failed to connect to peer");
+    pub async fn connect_to_peer_with_timeout(
+        &self,
+        peer_id: u32,
+        peer_addr: SocketAddr,
+    ) -> Result<(), String> {
+        println!("Attempting to connect to {}...", peer_addr);
 
-        let mut peers = self.peers.write().await;
-        peers.insert(peer_id, connection);
+        let connect_future = self.endpoint.connect(peer_addr, "peer");
+
+        let connecting = match connect_future {
+            Ok(conn) => {
+                println!("Connection initiated...");
+                conn
+            }
+            Err(e) => {
+                return Err(format!("Failed to initiate connection: {:?}", e));
+            }
+        };
+
+        match tokio::time::timeout(tokio::time::Duration::from_secs(5), connecting).await {
+            Ok(Ok(connection)) => {
+                println!("Connection established!");
+                let mut peers = self.peers.write().await;
+                peers.insert(peer_id, connection);
+                Ok(())
+            }
+            Ok(Err(e)) => Err(format!("Connection failed: {:?}", e)),
+            Err(_) => Err("Connection timed out (no response from peer)".to_string()),
+        }
     }
 
-    fn spawn_acceptor(&self) {
+    pub async fn connect_to_peer(&self, peer_id: u32, peer_addr: SocketAddr) {
+        match self.connect_to_peer_with_timeout(peer_id, peer_addr).await {
+            Ok(_) => {}
+            Err(e) => panic!("Failed to connect to peer: {}", e),
+        }
+    }
+
+    pub fn spawn_acceptor(&self) {
         let endpoint = self.endpoint.clone();
         let tx = self.tx.clone();
 
@@ -126,7 +170,7 @@ impl Network {
         }
     }
 
-    async fn recv(&mut self) -> Option<PBFTMessage> {
+    pub async fn recv(&mut self) -> Option<PBFTMessage> {
         self.rx.recv().await
     }
 
