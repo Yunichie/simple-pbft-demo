@@ -87,11 +87,9 @@ impl Crypto {
     pub fn verify_pbft_message(&self, message: &PBFTMessage) -> bool {
         match message {
             PBFTMessage::Request(request) => {
+                // for demo purposes, we will accept all requests
                 if !self.peer_public_keys.contains_key(&request.signer_id) {
-                    println!(
-                        "Unknown client {}, accepting request (debug)",
-                        request.signer_id
-                    );
+                    println!("Unknown client {}, accepting request", request.signer_id);
                     return true;
                 }
                 self.verify_signed_message(request)

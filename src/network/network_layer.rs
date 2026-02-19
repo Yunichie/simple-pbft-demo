@@ -113,7 +113,8 @@ impl Network {
                 let tx = tx.clone();
 
                 tokio::spawn(async move {
-                    Self::handle_connection(connection, tx);
+                    println!("Connection accepted from {:?}", connection.remote_address());
+                    Self::handle_connection(connection, tx).await;
                 });
             }
         });

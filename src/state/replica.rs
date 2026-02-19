@@ -106,7 +106,7 @@ impl Replica {
             return true;
         }
 
-        if !log.committed {
+        if !log.prepared {
             return false;
         }
 
@@ -418,10 +418,9 @@ impl Replica {
 
         loop {
             if let Some(msg) = network.recv().await {
-                println!("Received message type: {:?}", std::mem::discriminant(&msg));
-                // if !replica.crypto.verify_pbft_message(&msg) {
-                //     continue;
-                // }
+                if !replica.crypto.verify_pbft_message(&msg) {
+                    continue;
+                }
 
                 match msg {
                     PBFTMessage::Request(req) => {
