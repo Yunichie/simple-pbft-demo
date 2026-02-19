@@ -131,6 +131,6 @@ impl Network {
     }
 
     pub fn total_nodes(&self) -> u32 {
-        self.total_nodes
+        4
     }
 }

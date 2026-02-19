@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use crate::{
     crypto::primitives::Crypto,
     message::message_types::{Commit, PBFTMessage, PrePrepare, Prepare, Request, SignedMessage},
-    network::network_layer::Network,
+    network::{self, network_layer::Network},
     state::app_state::AppState,
 };
 
@@ -230,6 +230,78 @@ impl Replica {
         println!("Backup: sent prepare for seq {}", pre.seq_num);
     }
 
+    async fn handle_prepare(&mut self, signed_prepare: SignedMessage<Prepare>, network: &Network) {
+        let prepare = signed_prepare.message;
+
+        if !self.validate_prepare(&prepare) {
+            return;
+        }
+
+        let log = self.get_or_create_log(prepare.seq_num);
+
+        if log.prepares.contains_key(&prepare.replica_id) {
+            return;
+        }
+
+        log.prepares.insert(prepare.replica_id, prepare.clone());
+
+        println!(
+            "Received prepare from {} for seq {} (total: {})",
+            prepare.replica_id,
+            prepare.seq_num,
+            log.prepares.len()
+        );
+
+        self.check_prepared(prepare.seq_num, &prepare.digest);
+
+        let log = self.message_log.get_mut(&prepare.seq_num).unwrap();
+
+        if log.prepared && !log.commits.contains_key(&self.node_id) {
+            let commit = Commit {
+                view: prepare.view,
+                seq_num: prepare.seq_num,
+                digest: prepare.digest,
+                replica_id: self.node_id,
+            };
+
+            let signed_commit = self.crypto.create_signed_message(commit.clone());
+            network.broadcast(&PBFTMessage::Commit(signed_commit)).await;
+
+            log.commits.insert(self.node_id, commit);
+
+            println!("Prepared! Sent commit for seq {}", prepare.seq_num);
+        }
+    }
+
+    async fn handle_commit(&mut self, signed_commit: SignedMessage<Commit>, network: &Network) {
+        let commit = signed_commit.message;
+
+        if !self.validate_commit(&commit) {
+            return;
+        }
+
+        let log = self.get_or_create_log(commit.seq_num);
+
+        if log.commits.contains_key(&commit.replica_id) {
+            return;
+        }
+
+        log.commits.insert(commit.replica_id, commit.clone());
+
+        println!(
+            "Received commit from {} for seq {} (total: {})",
+            commit.replica_id,
+            commit.seq_num,
+            log.commits.len()
+        );
+
+        if self.check_committed(commit.seq_num, &commit.digest) {
+            println!("Committed seq {}!", commit.seq_num);
+
+            self.try_execute_up_to(commit.seq_num);
+        }
+    }
+
     fn validate_pre_prepare(
         &mut self,
         pre_prepare: &PrePrepare,
@@ -273,5 +345,65 @@ impl Replica {
         }
 
         true
+    }
+
+    fn validate_prepare(&self, prepare: &Prepare) -> bool {
+        if prepare.view != self.view {
+            return false;
+        }
+
+        if let Some(log) = self.message_log.get(&prepare.seq_num) {
+            if let Some(pre) = &log.pre_prepare {
+                return pre.digest == prepare.digest;
+            }
+        }
+
+        false
+    }
+
+    fn validate_commit(&self, commit: &Commit) -> bool {
+        if commit.view != self.view {
+            return false;
+        }
+
+        if let Some(log) = self.message_log.get(&commit.seq_num) {
+            if let Some(pre) = &log.pre_prepare {
+                if pre.digest != commit.digest {
+                    println!("Commit digest mismatch for seq {}", commit.seq_num);
+                    return false;
+                }
+            }
+        }
+
+        true
+    }
+
+    fn try_execute_up_to(&mut self, target_seq: u64) {
+        let mut seq = self.last_executed + 1;
+
+        while seq <= target_seq {
+            let is_committed = self
+                .message_log
+                .get(&seq)
+                .map(|log| log.committed)
+                .unwrap_or(false);
+
+            if !is_committed {
+                break;
+            }
+
+            if let Some(res) = self.execute_request(seq) {
+                println!(
+                    "Executed seq {}: result = {:?}",
+                    seq,
+                    String::from_utf8_lossy(&res)
+                );
+            } else {
+                println!("Failed to execute seq {}", seq);
+                break;
+            }
+
+            seq += 1;
+        }
     }
 }

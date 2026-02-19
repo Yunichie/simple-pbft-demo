@@ -25,10 +25,10 @@ pub struct Prepare {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Commit {
-    view: u64,
-    seq_num: u64,
+    pub view: u64,
+    pub seq_num: u64,
     pub digest: [u8; 32],
-    replica_id: u32,
+    pub replica_id: u32,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
