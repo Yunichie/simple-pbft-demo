@@ -1,10 +1,16 @@
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    time::Duration,
+};
+use tokio::time::Instant;
 
 use crate::{
     config::node::NodeConfig,
     crypto::primitives::Crypto,
     message::message_types::{Commit, PBFTMessage, PrePrepare, Prepare, Request, SignedMessage},
+    message_types::{PreparedProof, ViewChange},
     network::network_layer::Network,
     state::app_state::AppState,
 };
@@ -19,6 +25,11 @@ pub struct Replica {
     last_executed: u64,
     crypto: Crypto,
     app_state: AppState,
+    // view change
+    view_change_timer: Option<Instant>,
+    view_change_timeout: Duration,
+    in_view_change: bool,
+    view_change_msgs: HashMap<u64, HashMap<u32, ViewChange>>,
 }
 
 pub struct MessageLog {
@@ -60,7 +71,81 @@ impl Replica {
             last_executed: 0,
             crypto,
             app_state: AppState::new(),
+            view_change_timer: None,
+            view_change_timeout: Duration::from_millis(1000),
+            in_view_change: false,
+            view_change_msgs: HashMap::new(),
         }
+    }
+
+    fn start_timer(&mut self) {
+        self.view_change_timer = Some(Instant::now());
+    }
+
+    fn stop_timer(&mut self) {
+        self.view_change_timer = None;
+    }
+
+    fn check_timeout(&mut self) -> bool {
+        if let Some(timer) = self.view_change_timer {
+            if timer.elapsed() > self.view_change_timeout {
+                return true;
+            }
+        }
+        false
+    }
+
+    async fn trigger_view_change(&mut self, network: &Network) {
+        if self.in_view_change {
+            return;
+        }
+
+        let new_view = self.view + 1;
+
+        println!("Triggering view change to {}", new_view);
+
+        self.in_view_change = true;
+        self.stop_timer();
+
+        let prepared_reqs = self.collect_prepared_requests();
+
+        let view_change = ViewChange {
+            new_view,
+            prepared_requests: prepared_reqs,
+            replica_id: self.node_id,
+        };
+
+        let signed_view_change = self.crypto.create_signed_message(view_change.clone());
+        network
+            .broadcast(&PBFTMessage::ViewChange(signed_view_change))
+            .await;
+
+        self.view_change_msgs
+            .entry(new_view)
+            .or_insert_with(HashMap::new)
+            .insert(self.node_id, view_change);
+
+        println!("View change sent for view {}", new_view);
+    }
+
+    fn collect_prepared_requests(&self) -> Vec<PreparedProof> {
+        let mut proofs = Vec::new();
+
+        for (seq_num, log) in &self.message_log {
+            if log.prepared && !log.committed {
+                if let Some(pre) = &log.pre_prepare {
+                    let prepares: Vec<Prepare> = log.prepares.values().map(|p| p.clone()).collect();
+
+                    if prepares.len() >= (2 * self.f) as usize {
+                        proofs.push(PreparedProof {
+                            pre_prepare: pre.clone(),
+                            prepares,
+                        })
+                    }
+                }
+            }
+        }
+        proofs
     }
 
     fn total_nodes(&self) -> u32 {
@@ -436,6 +521,8 @@ impl Replica {
                         replica.handle_commit(c, &network).await;
                     }
                     PBFTMessage::Reply(_) => {}
+                    PBFTMessage::NewView(_) => {}
+                    PBFTMessage::ViewChange(_) => {}
                 }
             }
         }

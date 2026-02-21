@@ -48,10 +48,33 @@ pub struct SignedMessage<T> {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ViewChange {
+    pub new_view: u64,
+    pub prepared_requests: Vec<PreparedProof>,
+    pub replica_id: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PreparedProof {
+    pub pre_prepare: PrePrepare,
+    pub prepares: Vec<Prepare>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NewView {
+    pub new_view: u64,
+    pub view_change_msgs: Vec<ViewChange>,
+    pub pre_prepares: Vec<PrePrepare>,
+    pub replica_id: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum PBFTMessage {
     Request(SignedMessage<Request>),
     PrePrepare(SignedMessage<PrePrepare>),
     Prepare(SignedMessage<Prepare>),
     Commit(SignedMessage<Commit>),
     Reply(SignedMessage<Reply>),
+    ViewChange(SignedMessage<ViewChange>),
+    NewView(SignedMessage<NewView>),
 }

@@ -98,6 +98,8 @@ impl Crypto {
             PBFTMessage::Prepare(prepare) => self.verify_signed_message(prepare),
             PBFTMessage::Commit(commit) => self.verify_signed_message(commit),
             PBFTMessage::Reply(reply) => self.verify_signed_message(reply),
+            PBFTMessage::ViewChange(view_change) => self.verify_signed_message(view_change),
+            PBFTMessage::NewView(new_view) => self.verify_signed_message(new_view),
         }
     }
 }
