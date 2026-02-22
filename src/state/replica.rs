@@ -10,7 +10,7 @@ use crate::{
     config::node::NodeConfig,
     crypto::primitives::Crypto,
     message::message_types::{Commit, PBFTMessage, PrePrepare, Prepare, Request, SignedMessage},
-    message_types::{PreparedProof, ViewChange},
+    message_types::{NewView, PreparedProof, ViewChange},
     network::network_layer::Network,
     state::app_state::AppState,
 };
@@ -146,6 +146,105 @@ impl Replica {
             }
         }
         proofs
+    }
+
+    async fn handle_view_change(
+        &mut self,
+        signed_vc: SignedMessage<ViewChange>,
+        network: &Network,
+    ) {
+        let vc = signed_vc.message;
+
+        println!(
+            "Received view-change from {} for view {}",
+            signed_vc.signer_id, vc.new_view
+        );
+
+        self.view_change_msgs
+            .entry(vc.new_view)
+            .or_insert_with(HashMap::new)
+            .insert(signed_vc.signer_id, vc.clone());
+
+        let vc_count = self
+            .view_change_msgs
+            .get(&vc.new_view)
+            .map(|v| v.len())
+            .unwrap_or(0);
+
+        println!(
+            "View-change messages for view {}: {}/{}",
+            vc.new_view,
+            vc_count,
+            2 * self.f + 1
+        );
+
+        if vc_count >= (2 * self.f + 1) as usize {
+            let new_primary = (vc.new_view % self.total_nodes() as u64) as u32;
+
+            println!(
+                "Collected 2f+1 view-changes for view {}. New primary: {}",
+                vc.new_view, new_primary
+            );
+
+            if new_primary == self.node_id {
+                self.send_new_view(vc.new_view, network).await;
+            }
+        }
+    }
+
+    async fn send_new_view(&mut self, new_view: u64, network: &Network) {
+        println!("New view: {}", new_view);
+
+        let view_changes: Vec<ViewChange> = self
+            .view_change_msgs
+            .get(&new_view)
+            .unwrap()
+            .values()
+            .map(|v| v.clone())
+            .collect();
+
+        let pre_prepares = self.compute_new_view_pre_prepares(&view_changes, new_view);
+
+        let new_view_msg = NewView {
+            new_view,
+            view_change_msgs: view_changes,
+            pre_prepares: pre_prepares.clone(),
+            replica_id: self.node_id,
+        };
+
+        let signed_nv = self.crypto.create_signed_message(new_view_msg);
+        network.broadcast(&PBFTMessage::NewView(signed_nv)).await;
+
+        println!(
+            "Sent new-view for view {} with {} requests to re-propose",
+            new_view,
+            pre_prepares.len()
+        );
+    }
+
+    fn compute_new_view_pre_prepares(
+        &self,
+        view_changes: &[ViewChange],
+        new_view: u64,
+    ) -> Vec<PrePrepare> {
+        let mut pre_prepares = Vec::new();
+        let mut seen_seq = HashSet::new();
+
+        for vc in view_changes {
+            for proof in &vc.prepared_requests {
+                let seq = proof.pre_prepare.seq_num;
+
+                if seen_seq.contains(&seq) {
+                    let mut new_pp = proof.pre_prepare.clone();
+                    new_pp.view = new_view;
+                    pre_prepares.push(new_pp);
+                    seen_seq.insert(seq);
+                }
+            }
+        }
+
+        pre_prepares.sort_by_key(|p| p.seq_num);
+        pre_prepares
     }
 
     fn total_nodes(&self) -> u32 {
