@@ -553,7 +553,7 @@ cargo run --bin client -- 'GET:name'
 7. **Error handling** — Many places use `unwrap()`/`panic!()` that could use proper error handling.
 8. **Tests** — No unit or integration tests exist. Adding tests for the consensus logic, crypto, and app state would be valuable.
 9. **Logging** — Replace `println!` with a structured logging framework (e.g., `tracing`).
-10. **Bug in `compute_new_view_pre_prepares`** — Line 237 has `if seen_seq.contains(&seq)` which should likely be `if !seen_seq.contains(&seq)` (it currently only adds duplicates, not new entries).
+10. **Bug in `compute_new_view_pre_prepares`** — Line 237 has `if seen_seq.contains(&seq)` which should likely be `if !seen_seq.contains(&seq)`. The current code only processes a sequence number if it was already seen (i.e., duplicates), when it should process sequence numbers that have *not* been seen yet (i.e., new entries).
 
 ### Code Quality Notes
 - The project compiles with several warnings (unused variables, unused imports, dead code) — these are typical for a work-in-progress educational project.
